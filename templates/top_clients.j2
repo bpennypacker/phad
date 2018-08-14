@@ -1,0 +1,5 @@
+{{ ANSI['Ctl']['Clear_Screen'] }}{{ ANSI['Ctl']['Home'] }}                    {{ ANSI['Fore']['Bright_Cyan'] }}TOP CLIENTS          {{ ANSI['Fore']['Magenta'] }}{{ datetime['combined']['value'] }}{{ ANSI['Ctl']['Reset'] }}
+{{ ANSI['Fore']['Bright_Yellow'] }}Rank  Client                             Hits{{ ANSI['Ctl']['Reset'] }}
+{%- for d in top_clients %}
+{{ loop.cycle(ANSI['Fore']['Red'], ANSI['Fore']['Green'], ANSI['Fore']['Magenta']) }} {{ d['rank']['int'] }} : {% if d['hostname']['value'] == "" %}{{ d['IP']['str'] }}{% else %}{{ d['hostname']['str'] }}{% endif %}{{ d['requests']['value'] }}{{ ANSI['Ctl']['Reset'] }}
+{%- endfor %}

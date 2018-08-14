@@ -1,0 +1,1004 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License in the file LICENSE for more details.
+
+import os
+import sys
+import codecs
+import argparse
+import ConfigParser
+import socket
+import select
+import json
+import datetime
+import time
+import re
+import jinja2
+import requests
+import signal
+import errno
+import shlex
+import struct
+from evdev import ecodes, InputDevice
+from select import select
+from socket import error as socket_error
+from subprocess import Popen, PIPE
+from threading import Timer
+
+VERSION = "0.1"
+
+current_template_id = 0
+main_timeout = 0
+config = None
+config_file_name = None
+templateEnv = None
+templates = None
+dev = None
+pid_file = None
+template_path = './'
+
+debug = False
+
+# ANSI foreground, background, and control colors
+Fore = {
+  'Black': u'\u001b[30m',
+  'Red': u'\u001b[31m',
+  'Green': u'\u001b[32m',
+  'Yellow': u'\u001b[33m',
+  'Blue': u'\u001b[34m',
+  'Magenta': u'\u001b[35m',
+  'Cyan': u'\u001b[36m',
+  'White': u'\u001b[37m',
+  'Bright_Red': u'\u001b[31;1m',
+  'Bright_Green': u'\u001b[32;1m',
+  'Bright_Yellow': u'\u001b[33;1m',
+  'Bright_Blue': u'\u001b[34;1m',
+  'Bright_Magenta': u'\u001b[35;1m',
+  'Bright_Cyan': u'\u001b[36;1m',
+  'Bright_White': u'\u001b[37;1m'
+}
+
+Back = {
+  'Black': u'\u001b[40m',
+  'Red': u'\u001b[41m',
+  'Green': u'\u001b[42m',
+  'Yellow': u'\u001b[43m',
+  'Blue': u'\u001b[44m',
+  'Magenta': u'\u001b[45m',
+  'Cyan': u'\u001b[46m',
+  'White': u'\u001b[47m',
+  'Bright_Red': u'\u001b[41;1m',
+  'Bright_Green': u'\u001b[42;1m',
+  'Bright_Yellow': u'\u001b[43;1m',
+  'Bright_Blue': u'\u001b[44;1m',
+  'Bright_Magenta': u'\u001b[45;1m',
+  'Bright_Cyan': u'\u001b[46;1m',
+  'Bright_White': u'\u001b[47;1m'
+}
+
+Ctl = {
+  'Reset': u'\u001b[0m',
+  'Bold': u'\u001b[1m',
+  'Underline': u'\u001b[4m',
+  'Reversed': u'\u001b[7m',
+  'Clear_Screen_End': u'\u001b[0J',   # Cursor to end of screen
+  'Clear_Screen_Start': u'\u001b[1J', # Cursor to start of screen
+  'Clear_Screen': u'\u001b[2J', 
+  'Clear_Line_End': u'\u001b[0K',     # Cursor to end of line
+  'Clear_Line_Start': u'\u001b[1K',   # Cursor to start of line
+  'Clear_Line': u'\u001b[2K',
+  'Home': u'\u001b[0;0H'
+}
+
+
+EOM = "---EOM---" # All FTL responses end with this
+
+
+#############################################################################
+
+def Debug(msg):
+    if debug:
+        print msg
+
+#############################################################################
+
+def run(cmd, timeout_sec = 30):
+    proc = Popen(shlex.split(cmd), stdout=PIPE, stderr=PIPE)
+    timer = Timer(timeout_sec, proc.kill)
+    stdout = ""
+    try:
+        timer.start()
+        stdout, stderr = proc.communicate()
+    except:
+        pass
+    finally:
+        timer.cancel()
+
+    return stdout.rstrip()
+
+#############################################################################
+
+def create_bar_graph(percent, length, used_fill, free_fill, used_color, free_color):
+    split = int((float(percent) / 100.0) * length)
+
+    s = ""
+    if used_color != None and split > 0:
+        s += used_color
+
+    for x in range (0, split):
+        s += used_fill
+
+    if free_color != None:
+        s += free_color
+
+    for x in range(split, length):
+        s += free_fill
+
+    if used_color != None or free_color != None:
+        s += Ctl['Reset']
+
+    return s
+
+#############################################################################
+
+def format_var(cfg, name, value):
+    v = { 'value': value }
+
+    if cfg.has_section(name):
+        pass
+    elif '/' in name:
+        while '/' in name:
+            name = name.rsplit('/', 1)[0]
+            if cfg.has_section(name):
+                break
+        if name == '':
+            return v
+    else:
+        return v
+
+    if cfg.has_option(name, 'graph'):
+        c = cfg.get(name, 'graph')
+        length, uf, ff, uc, fc = (c.split(',') + [None] * 5)[:5]
+
+        if length != None and int(length) > 0:
+            used_fill = uf if uf else u'■'
+            free_fill = ff if ff else u'■'
+
+            if uc and uc in Fore:
+                used_color = Fore[uc]
+            else:
+                used_color = Fore['Red']
+
+            if fc and fc in Fore:
+                free_color = Fore[fc]
+            else:
+                free_color = Fore['Green']
+
+            v['graph'] = create_bar_graph(float(value), int(length), used_fill, free_fill, used_color, free_color)
+
+    if cfg.has_option(name, 'int'):
+        c = cfg.get(name, 'int')
+        c = c.replace("\"","")
+        v['int'] = c.format(int(value)).decode('utf-8')
+
+    if cfg.has_option(name, 'float'):
+        c = cfg.get(name, 'float')
+        c = c.replace("\"","")
+        v['float'] = c.format(float(value))
+
+    if cfg.has_option(name, 'str'):
+        c = cfg.get(name, 'str')
+        c = c.replace("\"","")
+        v['str'] = c.format(str(value)).decode('utf-8')
+
+    if cfg.has_option(name, 'strings'):
+        s = cfg.get(name, 'strings')
+        for i in s.split(','):
+            if cfg.has_option(name, i):
+                c = cfg.get(name, i)
+                c = c.replace("\"","")
+                if isinstance(value, list):
+                    v[i] = c.format(*value).decode('utf-8')
+                elif isinstance(value, dict):
+                    v[i] = c.format(**value).decode('utf-8')
+                else:
+                    v[i] = c.format(value).decode('utf-8')
+
+    return v
+
+#############################################################################
+
+def chomp(x):
+    if x.endswith("\r\n"): return x[:-2]
+    if x.endswith("\n") or x.endswith("\r"): return x[:-1]
+    return x
+
+#############################################################################
+
+def get_uptime(cfg):
+  Debug('get_uptime()')
+
+  with open('/proc/uptime', 'r') as f:
+      uptime_seconds = int(f.readline().split()[0].split('.', 1)[0])
+
+  days = ( uptime_seconds // ( 24 * 3600 ))
+  hours = ( uptime_seconds % ( 24 * 3600 )) // 3600
+  minutes = ( uptime_seconds % 3600 // 60 )
+  seconds = uptime_seconds % 60
+
+  uptime = { 'days': days, 'hours': hours, 'minutes': minutes, 'seconds': seconds, 'total_seconds': uptime_seconds }
+
+  formatted = format_var(config, 'uptime', uptime)
+
+  for i in formatted:
+      if i != 'value':
+          uptime[i] = formatted[i]
+
+  return uptime
+   
+#############################################################################
+
+def get_pihole_results(client, command, maxsplit=-1):
+    Debug('get_pihole_results({})'.format(command))
+
+    while True:
+        client.send('>{}\n'.format(command))
+        results = ""
+        try:
+            while True:
+                r = client.recv(1024)
+                results += r
+                if EOM in r:
+                    break
+        except socket_error as serr:
+            if serr.errno == errno.EINTR:
+                results = ""
+                pass
+
+        if results != "":
+            break
+
+    results = results.split(EOM, 1)[0].strip()
+
+    t = []
+    for i in results.splitlines():
+        t.append(tuple(i.split(' ', maxsplit)))
+
+    return t
+
+#############################################################################
+# Get public IP address
+
+def get_public_ip(cfg):
+    Debug('get_public_ip()')
+
+    if cfg.has_option('main', 'external_ip_url'):
+        url = cfg.get('main', 'external_ip_url')
+    else:
+        url = 'https://diagnostic.opendns.com/myip'
+
+    response = requests.get(url)
+    return response.text
+
+#############################################################################
+# Fetched timed data once every 24 hours
+
+def get_timed_data(cfg, data):
+    Debug('get_timed_data()')
+
+    if cfg.has_option('main', 'data_file'):
+        version_file = cfg.get('main', 'data_file')
+    else:
+        version_file = '/tmp/pihole.dat'
+
+    d = {}
+    t = int(time.time()) / 60 / 60 / 24
+
+    if os.path.exists(version_file) and os.path.isfile(version_file):
+        Debug('  read {}'.format(version_file))
+        with open(version_file, "r") as f:
+            for line in f:
+                (key, val) = chomp(line).split("=")
+                d[key] = val
+
+    if 'last_check' not in d or int(d['last_check']) < t:
+        Debug('  do last_check')
+
+        phad_version = "unknown"
+        try:
+            url = "https://github.com/bpennypacker/phad/releases/latest"
+            response = requests.get(url, allow_redirects=False)
+            if 'Location' in response.headers:
+                sp = response.headers['Location'].split('/')
+                if sp[-2] == 'tag':
+                    phad_version = "{}".format(sp[-1])
+        except Exception, e:
+            pass
+
+        d['phad_latest'] = phad_version
+
+        # Check git & hashes if desired
+        if cfg.has_option('main', 'git_update_version_check') and cfg.getboolean('main', 'git_update_version_check') == True:
+
+            if cfg.has_option('main', 'git_repo'):
+                git_repo = cfg.get('main', 'git_repo')
+            else:
+                git_repo = '/etc/.pihole'
+
+            if cfg.has_option('main', 'git_sudo'):
+                git_sudo = cfg.getboolean('main', 'git_sudo')
+            else:
+                git_sudo = True
+
+            git_cmd = "{}git -C {} remote update".format( "sudo " if git_sudo else "", git_repo)
+                   
+            results = run(git_cmd)
+
+        pattern = re.compile('.* (version|hash) is (.*) \(Latest: (.*)\)')
+
+        if cfg.has_option('main', 'use_version_hashes'):
+            use_version_hashes = cfg.getboolean('main', 'use_version_hashes')
+        else:
+            use_version_hashes = False
+
+        cmd = "pihole -v -p"
+        if use_version_hashes:
+            cmd += " --hash"
+
+        results = run(cmd)
+        Debug('{}: [{}]'.format(cmd, results))
+
+        if 'not applicable' in results:
+            d['pihole'] = "N/A"
+            d['piholeLatest'] = "N/A"
+        else:
+            match = pattern.search(results)
+            if match:
+                d['pihole'] = match.group(2)
+                d['piholeLatest'] = match.group(3)
+            else:
+                d['pihole'] = "unknown"
+                d['piholeLatest'] = "unknown"
+
+        cmd = "pihole -v -a"
+        if use_version_hashes:
+            cmd += " --hash"
+
+        results = run(cmd)
+        Debug('{}: [{}]'.format(cmd, results))
+
+        if 'not applicable' in results:
+            d['web'] = "N/A"
+            d['webLatest'] = "N/A"
+        else:
+            match = pattern.search(results)
+            if match:
+                d['web'] = match.group(2)
+                d['webLatest'] = match.group(3)
+            else:
+                d['web'] = "unknown"
+                d['webLatest'] = "unknown"
+
+        cmd = "pihole -v -f"
+        if use_version_hashes:
+            cmd += " --hash"
+
+        results = run(cmd)
+        Debug('{}: [{}]'.format(cmd, results))
+
+        if 'not applicable' in results:
+            d['ftl'] = "N/A"
+            d['ftlLatest'] = "N/A"
+        else:
+            match = pattern.search(results)
+            if match:
+                d['ftl'] = match.group(2)
+                d['ftlLatest'] = match.group(3)
+            else:
+                d['ftl'] = "unknown"
+                d['ftlLatest'] = "unknown"
+
+        if cfg.has_option('main', 'get_external_ip') and cfg.getboolean('main', 'get_external_ip') == True:
+            d['public_ip'] = get_public_ip(cfg)
+
+
+        d['last_check'] = t
+
+        with open(version_file, "w") as f:
+            for k in d:
+                f.write("{}={}\n".format(k, d[k]))
+
+    pihole = { 'pihole' : d['pihole'], 'web': d['web'], 'FTL': d['ftl'], 'phad': "v{}".format(VERSION) }
+    latest = { 'pihole' : d['piholeLatest'], 'web': d['webLatest'], 'FTL': d['ftlLatest'], 'phad': d['phad_latest'] }
+
+    pihole_up_to_date = ( pihole['pihole'] == latest['pihole'] )
+    web_up_to_date = ( pihole['web'] == latest['web'] )
+    ftl_up_to_date = ( pihole['FTL'] == latest['FTL'] )
+    phad_up_to_date = ( pihole['phad'] == latest['phad'] )
+
+    all_up_to_date = pihole_up_to_date and web_up_to_date and ftl_up_to_date and phad_up_to_date
+
+    for i in pihole:
+        pihole[i] = format_var(cfg, 'version/current', pihole[i])
+
+    for i in latest:
+        latest[i] = format_var(cfg, 'version/latest', latest[i])
+
+    results = {
+        'all_up_to_date': all_up_to_date,
+        'pihole_up_to_date': pihole_up_to_date,
+        'web_up_to_date': web_up_to_date,
+        'ftl_up_to_date': ftl_up_to_date,
+        'phad_up_to_date': phad_up_to_date,
+        'current': pihole,
+        'latest': latest
+    }
+
+    if 'public_ip' in d:
+        data['host']['public_ip'] = d['public_ip']
+
+    data['version'] = results
+
+#############################################################################
+def ip2long(ip):
+    packedIP = socket.inet_aton(ip)
+    return struct.unpack("!L", packedIP)[0]
+
+#############################################################################
+# Commands from https://github.com/pi-hole/FTL
+def query_pihole(cfg):
+    Debug('query_pihole')
+
+    data = {}
+
+    retries = 10
+
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    while True:
+        try:
+            client.connect(("localhost", 4711))
+            break
+        except socket.error as e:
+            retries -= 1
+            if retries <= 0:
+                print "Unable to communicate with pihole. Aborting."
+                sys.exit(1)
+            time.sleep(1)
+
+    client.settimeout(10)
+
+    d =  dict(get_pihole_results(client, 'stats'))
+
+    try:
+        d['latest-blocked'] = get_pihole_results(client, 'recentBlocked')[0][0]
+    except:
+        d['latest-blocked'] = 'none'
+
+    for i in d:
+        d[i] = format_var(cfg, 'stats/' + i, d[i])
+
+    data['stats'] = d
+
+    top_domains_max = 10
+    if cfg.has_option('main', 'top_domains_max'):
+        try:
+            top_domains_max = cfg.getint('main', 'top_domains_max')
+        except:
+            pass
+
+    results = get_pihole_results(client, 'top-domains ({})'.format(top_domains_max))
+
+    data['top_domains'] = []
+
+    for r in results:
+        if len(r):
+            res = { 'rank': int(r[0]) + 1, 'hits': int(r[1]), 'url': r[2] }
+            for rr in res:
+                res[rr] = format_var(cfg, 'top/domains/' + rr, res[rr])
+            data['top_domains'].append(res)
+
+    top_ads_max = 10
+    if cfg.has_option('main', 'top_ads_max'):
+        try:
+            top_ads_max = cfg.getint('main', 'top_ads_max')
+        except:
+            pass
+
+    results = get_pihole_results(client, 'top-ads ({})'.format(top_ads_max))
+
+    data['top_ads'] = []
+
+    for r in results:
+        if len(r):
+            res = { 'rank': int(r[0]) + 1, 'hits': int(r[1]), 'url': r[2] }
+            for rr in res:
+                res[rr] = format_var(cfg, 'top/ads/' + rr, res[rr])
+            data['top_ads'].append(res)
+
+    top_clients_max = 10
+    if cfg.has_option('main', 'top_clients_max'):
+        try:
+            top_clients_max = cfg.getint('main', 'top_clients_max')
+        except:
+            pass
+
+    results = get_pihole_results(client, 'top-clients ({})'.format(top_clients_max))
+
+    data['top_clients'] = []
+
+    for r in results:
+        if len(r) >= 4:
+            res = { 'rank': int(r[0]) + 1, 'requests': int(r[1]), 'IP': r[2], 'hostname': r[3] }
+            for rr in res:
+                res[rr] = format_var(cfg, 'top/clients/' + rr, res[rr])
+            data['top_clients'].append(res)
+
+    data['forward_dest'] = get_pihole_results(client, 'forward-dest')
+
+    d = []
+    results = get_pihole_results(client, 'querytypes')
+    for r in results:
+        res = { 'type': r[0].replace(':', ''), 'value': r[-1] }
+        for rr in res:
+            res[rr] = format_var(cfg, 'querytypes/' + rr, res[rr])
+        d.append(res)
+
+    data['querytypes'] = d
+
+    d = {}
+    results = get_pihole_results(client, 'client-names')
+    for r in results:
+        if len(r) == 2:
+            d[r[1]] = r[0]
+
+    data['client_names'] = d
+
+    d = []
+    for k in sorted(data['client_names'].keys(), key = ip2long):
+        res = { 'IP': k, 'host': data['client_names'][k] }
+        for rr in res:
+            res[rr] = format_var(cfg, 'client_names/' + rr, res[rr])
+        d.append(res)
+
+    data['client_names_sorted'] = d
+
+    client.send('>quit\n')
+    client.close()
+
+    status = {}
+
+    try:
+        results = run('pihole status web')
+        if len(results):
+            s = int(results)
+        else:
+            s = 2
+
+        if s == 1:
+            status['pihole'] = "Running"
+        elif s == 0:
+            status['pihole'] = "Offline"
+        elif s == -1:
+            status['pihole'] = "DNS Offline"
+        else:
+            status['pihole'] = "Unknown"
+    except:
+        status['pihole'] = "Error"
+
+    try:
+        results = run('pidof -s pihole-FTL')
+        if len(results):
+            s = int(results)
+        else:
+            s = 0
+
+        if s == 0:
+            status['ftl'] = "Not Running"
+        else:
+            status['ftl'] = "Running"
+    except:
+        status['ftl'] = "Not running"
+
+    for i in status:
+        status[i] = format_var(cfg, 'status/' + i, status[i])
+
+    with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
+        raw_temp = int(f.readline())
+
+    temp = { 'raw' : raw_temp, 'F': float(raw_temp) * 9 / 5000 + 32, 'C': float(raw_temp) / 1000, 'K': float(raw_temp) / 1000 + 273.15 }
+
+    for t in temp:
+        temp[t] = format_var(cfg, 'status/temp/' + t, temp[t])
+
+    status['temp'] = temp
+
+    data['status'] = status
+
+    return data
+
+
+#############################################################################
+
+def get_host_data(cfg):
+    Debug('get_host_data()')
+
+    data = {}
+    mem = {}
+
+    data['hostname'] = socket.gethostname()
+
+    fqdn = socket.getfqdn().split('.', 1)
+    if len(fqdn) > 1:
+        data['domainname'] = fqdn[1]
+    else:
+        data['domainname'] = "<none>"
+
+    data['loadavg'] = os.getloadavg()
+
+    data['pid'] = os.getpid()
+
+    results = run('grep -c "model name" /proc/cpuinfo')
+    if len(results):
+        data['numprocs'] = int(results)
+    else:
+        data['numprocs'] = 0
+
+    data['cpuload'] = data['loadavg'][0] / data['numprocs'] * 100
+
+    for i in data:
+        data[i] = format_var(cfg, 'host/' + i, data[i])
+
+    with open('/proc/meminfo', 'rt') as f:
+        meminfo = {}
+        for i in f.read().splitlines():
+             try:
+                 name, val = i.split(':')
+                 meminfo[name.strip()] = int(val.split()[0])
+             except:
+                 pass
+
+    memfree = meminfo['MemFree'] + meminfo['Buffers'] + meminfo['Cached']
+
+    mem['free'] = memfree
+    mem['total'] = meminfo['MemTotal']
+    mem['percent'] = float(int(meminfo['MemTotal']) - int(memfree)) / float(meminfo['MemTotal']) * 100
+
+    for i in mem:
+        mem[i] = format_var(cfg, 'memory/' + i, mem[i])
+
+    data['system-memory'] = mem
+
+    return data
+
+#############################################################################
+
+def get_setupvars(cfg):
+    Debug('get_setupvars()')
+
+    data = {}
+
+    with open('/etc/pihole/setupVars.conf', 'r') as f:
+        for l in f:
+            if '=' in l and l[0] != '#':
+                k, v = chomp(l).split('=')
+                if 'PASSWORD' not in k:
+                    data[k] = v
+
+    for i in data:
+        data[i] = format_var(cfg, 'host/' + i, data[i])
+
+    return data
+
+#############################################################################
+
+def fetch_datetime(cfg):
+    Debug('fetch_datetime()')
+
+    dt = datetime.datetime.now()
+    date_list = [dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second]
+
+    data = { 'YYMMDDHHMMSS': date_list }
+
+    if cfg.has_option('datetime', 'formatted'):
+        s = cfg.get('datetime', 'formatted')
+        for i in s.split(','):
+            if cfg.has_option('datetime', i):
+                c = cfg.get('datetime', i)
+                c = c.replace("\"","")
+                data[i] = dt.strftime(c)
+
+    for i in data:
+        data[i] = format_var(cfg, 'datetime/' + i, data[i])
+
+    return data
+
+#############################################################################
+
+def fetch_data(cfg):
+    Debug('fetch_data()')
+
+    data = query_pihole(config)
+
+    data['ANSI'] = { 'Fore': Fore, 'Back': Back,  'Ctl': Ctl }
+
+    data['uptime'] = get_uptime(config)
+
+    data['datetime'] = fetch_datetime(config)
+
+    data['host'] = get_host_data(config)
+
+    data['setupvars'] = get_setupvars(config)
+
+    get_timed_data(config, data)
+
+    return data
+
+#############################################################################
+
+def load_config():
+    global main_timeout 
+    global config
+    global config_file_name 
+    global templateEnv
+    global templates 
+    global template_path
+    global dev
+
+    Debug('load_config()')
+
+    try:
+        config.readfp(codecs.open(config_file_name, "r", "utf8"))
+    except Exception as e:
+        print e
+        sys.exit(1)
+
+    if config.has_option('main', 'enable_main_timeout') and config.getboolean('main', 'enable_main_timeout'):
+        if config.has_option('main', 'main_timeout'):
+            main_timeout = config.getint('main', 'main_timeout')
+        else:
+            main_timeout = 60
+    else:
+        main_timeout = 0
+
+    if config.has_option('main', 'template_path'):
+        template_path = config.get('main', 'template_path')
+
+    templateLoader = jinja2.FileSystemLoader(searchpath = template_path)
+    templateEnv = jinja2.Environment(loader=templateLoader)
+
+    templates = config.get('main', 'templates').split(',')
+
+    if config.has_option('main', 'input_device'):
+        input_device = config.get('main', 'input_device')
+    else:
+        input_device = '/dev/input/event0'
+
+    dev = InputDevice(input_device)
+
+#############################################################################
+
+def signal_handler(sig, stack):
+    if sig == signal.SIGHUP:
+        load_config()
+        return
+    elif sig == signal.SIGALRM:
+        signal.alarm(0)
+        return
+    elif sig == signal.SIGINT:
+        if pid_file != None:
+            try:
+                os.remove(pid_file)
+            except:
+                pass
+
+        os.system('setterm -cursor on')
+        print ""
+        sys.exit(0)
+
+#############################################################################
+
+def fetch_template(t):
+
+    template = None
+
+    try:
+        template = templateEnv.get_template(t)
+    except jinja2.exceptions.TemplateNotFound as e:
+        s = "Error: template file {}/{} not found".format(template_path, t)
+        template = templateEnv.from_string(s)
+    except jinja2.exceptions.TemplateSyntaxError as e:
+        s = "Error: syntax error in template file {}/{}: {}, line {}".format(template_path, t, e, e.lineno)
+        template = templateEnv.from_string(s)
+
+    return template
+
+#############################################################################
+
+def is_running(pid):
+    if os.path.isdir('/proc/{}'.format(pid)):
+        return True
+    return False
+
+#############################################################################
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Pi-Hole Alternate Display")
+    parser.add_argument('-c', '--config',
+                        help="Config file",
+                        required=False,
+                        default='./phad.conf')
+    parser.add_argument('-s', '--seconds',
+                        help="Cycle through screens every -s seconds. Will also disable responding to touchscrens.",
+                        required=False,
+                        type=int)
+    parser.add_argument('-t', '--template',
+                        help="Template to render",
+                        required=False)
+    parser.add_argument('-r', '--readconf',
+                        help="Re-read the config file by sending a SIGHUP to PID of the running instance.",
+                        required=False,
+                        action="store_true")
+    parser.add_argument('-j', '--json',
+                        help="Dump json data then exit",
+                        required=False,
+                        action="store_true")
+    parser.add_argument('-i', '--items',
+                        help="List each individual json item name. Useful for then passing to --items",
+                        required=False,
+                        action="store_true")
+    parser.add_argument('-l', '--list',
+                        help="Requires --json. Name of individual top-level json items to list. If not specified then all items are displayed.",
+                        nargs = "+",
+                        required=False)
+    parser.add_argument('-d', '--debug',
+                        help="Debug",
+                        required=False,
+                        action="store_true")
+
+    args = parser.parse_args()
+
+    if args.debug:
+        Ctl['Clear_Screen'] = '' # Disable clearing the screen & moving home so debug statement are seen
+        Ctl['Home'] = ''
+        debug = True
+
+    script_path = os.path.dirname(os.path.realpath(__file__))
+    Debug("Script path: {}".format(script_path))
+    os.chdir(script_path)
+
+    config = ConfigParser.ConfigParser()
+    config_file_name = args.config
+
+    load_config()
+
+    if args.readconf == True:
+        fname = config.get('main', 'pid_file')
+        try: 
+            with open(fname, "r") as f:
+                pid = f.readline()
+            os.kill(int(pid), signal.SIGHUP)
+            print "Sent SIGHUP to PID {}".format(pid)
+        except Exception as e:
+            print str(e)
+        sys.exit(0)
+
+    if args.json or args.items:
+        data = fetch_data(config)
+        if args.items:
+            for i in sorted(data):
+                print i
+            sys.exit(0)
+
+        if args.list is not None:
+            for i in args.list:
+                print json.dumps({ i: data[i]}, indent=4, sort_keys=True)
+                print
+        else:
+            for i in sorted(data):
+                print json.dumps({ i: data[i]}, indent=4, sort_keys=True)
+                print
+        sys.exit(0)
+
+    if args.template:
+        template = fetch_template(args.template)
+        data = fetch_data(config)
+        t = template.render(**data)
+        sys.stdout.write(t.encode('utf-8'))
+        sys.stdout.flush()
+        sys.exit(0)
+
+    if config.has_option('main', 'pid_file'):
+        pid_file = config.get('main', 'pid_file')
+        pid_running = False
+        try: 
+            with open(pid_file, "r") as f:
+                pid = f.readline()
+            pid_running = is_running(int(pid))
+        except Exception as e:
+            pass
+
+        if pid_running:
+            # Don't overwrite the PID file (or delete it on shutdown) if it contains
+            # a PID of a running instance.
+            pid_file = None
+        else:
+            try:
+                with open(pid_file, "w") as f:
+                    f.write("{}".format(os.getpid()))
+            except Exception as e:
+                print "Unable to save PID to {}".format(pid_file)
+                print str(e)
+
+    signal.signal(signal.SIGHUP, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+
+    template = fetch_template(templates[current_template_id])
+
+    os.system('setterm -cursor off')
+
+    if args.seconds:
+        seconds = args.seconds
+        current_template_id = 0
+
+        while True:
+            template = fetch_template(templates[current_template_id])
+
+            data = fetch_data(config)
+            t = template.render(**data)
+            sys.stdout.write(t.encode('utf-8'))
+            sys.stdout.flush()
+
+            current_template_id += 1
+            if current_template_id >= len(templates):
+                current_template_id = 0
+
+            time.sleep(seconds)
+
+
+    while True:
+        data = fetch_data(config)
+        t = template.render(**data)
+        sys.stdout.write(t.encode('utf-8'))
+        sys.stdout.flush()
+
+        if debug:
+            print ""
+
+        if config.has_option('main', 'refresh_rate'):
+            signal.signal(signal.SIGALRM, signal_handler)
+            timeout = config.getfloat('main', 'refresh_rate')
+        else:
+            timeout = 30.0
+
+        try:
+            r1,w1,x1 = select([dev], [], [], timeout)
+        except Exception as e:
+            if e[0] == errno.EINTR:
+                # ALARM
+                current_template_id = 0
+                template = fetch_template(templates[current_template_id])
+                continue
+            else:
+                raise
+
+        if len(r1) != 0:
+            for event in dev.read():
+                if event.type == ecodes.EV_KEY and event.value == 1:
+                    current_template_id += 1
+                    if current_template_id >= len(templates):
+                        current_template_id = 0
+                        signal.alarm(0)
+                    elif main_timeout > 0:
+                        signal.alarm(main_timeout)
+                    template = fetch_template(templates[current_template_id])
+                    break

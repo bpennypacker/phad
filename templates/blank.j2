@@ -1,0 +1,7 @@
+{# This template will effectively blank the screen when rendered. Use this as
+   your default template (the first template listed on the 'templates' 
+   option in phad.conf) and set the 'enable_main_timeout' option to True
+   if you would like your pi-hole display to default to a blank screen
+   and "wake up" when you tap on it.
+#}
+{{ ANSI['Ctl']['Clear_Screen'] }}{{ ANSI['Ctl']['Home'] }}

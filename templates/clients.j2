@@ -1,0 +1,5 @@
+{%- for c in client_names_sorted %}
+{{ c['IP']['str'] }} {% if c['host']['value']|length %}{{ c['host']['value'] }}{% else %}(unknown){% endif %}
+{%- endfor %}
+
+

@@ -1,0 +1,5 @@
+{{ ANSI['Ctl']['Clear_Screen'] }}{{ ANSI['Ctl']['Home'] }}                    {{ ANSI['Fore']['Bright_Cyan'] }}TOP ADS              {{ ANSI['Fore']['Magenta'] }}{{ datetime['combined']['value'] }}{{ ANSI['Ctl']['Reset'] }}
+{{ ANSI['Fore']['Bright_Yellow'] }}Rank  URL                                     Hits{{ ANSI['Ctl']['Reset'] }}
+{%- for ad in top_ads %}
+{{ loop.cycle(ANSI['Fore']['Red'], ANSI['Fore']['Green'], ANSI['Fore']['Blue']) }} {{ ad['rank']['int'] }} : {{ ad['url']['str40'] }} {{ ad['hits']['value'] }}{{ ANSI['Ctl']['Reset'] }}
+{%- endfor %}

@@ -1,0 +1,5 @@
+{{ ANSI['Ctl']['Clear_Screen'] }}{{ ANSI['Ctl']['Home'] }}                    {{ ANSI['Fore']['Bright_Cyan'] }}TOP DOMAINS          {{ ANSI['Fore']['Magenta'] }}{{ datetime['combined']['value'] }}{{ ANSI['Ctl']['Reset'] }}
+{{ ANSI['Fore']['Bright_Yellow'] }}Rank  URL                                     Hits{{ ANSI['Ctl']['Reset'] }}
+{%- for d in top_domains %}
+{{ loop.cycle(ANSI['Fore']['Red'], ANSI['Fore']['Green'], ANSI['Fore']['Magenta']) }} {{ d['rank']['int'] }} : {{ d['url']['str40'] }} {{ d['hits']['value'] }}{{ ANSI['Ctl']['Reset'] }}
+{%- endfor %}

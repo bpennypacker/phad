@@ -1,0 +1,22 @@
+{{ ANSI['Ctl']['Clear_Screen'] }}{{ ANSI['Ctl']['Home'] }}{% if version['all_up_to_date'] == true %}{{ ANSI['Fore']['Bright_Green'] }}All systems up-to-date         {% else %}{{ ANSI['Fore']['Bright_Red'] }}One or more systems out-of-date{% endif %}{{ ANSI['Ctl']['Reset'] }}{{ ANSI['Fore']['Magenta'] }}          {{ datetime['combined']['value'] }}{{ ANSI['Ctl']['Reset'] }}
+Pi-hole version {% if version['pihole_up_to_date'] == true %}{{ ANSI['Fore']['Bright_Green'] }}{% else %}{{ ANSI['Fore']['Bright_Red'] }}{% endif %}{{ version['current']['pihole']['left'] }}{{ ANSI['Ctl']['Reset'] }} (latest: {{ ANSI['Fore']['Bright_Magenta'] }}{{ version['latest']['pihole']['value'] }}{{ ANSI['Ctl']['Reset'] }})
+Web version     {% if version['web_up_to_date'] == true %}{{ ANSI['Fore']['Bright_Green'] }}{% else %}{{ ANSI['Fore']['Bright_Red'] }}{% endif %}{{ version['current']['web']['left'] }}{{ ANSI['Ctl']['Reset'] }} (latest: {{ ANSI['Fore']['Bright_Magenta'] }}{{ version['latest']['web']['value'] }}{{ ANSI['Ctl']['Reset'] }})
+FTL version     {% if version['ftl_up_to_date'] == true %}{{ ANSI['Fore']['Bright_Green'] }}{% else %}{{ ANSI['Fore']['Bright_Red'] }}{% endif %}{{ version['current']['FTL']['left'] }}{{ ANSI['Ctl']['Reset'] }} (latest: {{ ANSI['Fore']['Bright_Magenta'] }}{{ version['latest']['FTL']['value'] }}{{ ANSI['Ctl']['Reset'] }})
+phad version    {% if version['phad_up_to_date'] == true %}{{ ANSI['Fore']['Bright_Green'] }}{% else %}{{ ANSI['Fore']['Bright_Red'] }}{% endif %}{{ version['current']['phad']['left'] }}{{ ANSI['Ctl']['Reset'] }} (latest: {{ ANSI['Fore']['Bright_Magenta'] }}{{ version['latest']['phad']['value'] }}{{ ANSI['Ctl']['Reset'] }})
+PI-HOLE ====================================================
+ Status: {% if status['pihole']['value'] == "Running" %}{{ ANSI['Fore']['Bright_Green'] }}{% else %}{{ ANSI['Fore']['Bright_Red'] }}{% endif %}{{status['pihole']['str'] }}{{ ANSI['Ctl']['Reset'] }}    FTL: {% if status['ftl']['value'] == "Running" %}{{ ANSI['Fore']['Bright_Green'] }}{% else %}{{ ANSI['Fore']['Bright_Red'] }}{% endif %}{{status['ftl']['str'] }}{{ ANSI['Ctl']['Reset'] }}
+STATS ======================================================
+ Blocking: {{ stats['domains_being_blocked']['int'] }}
+ Pi-holed: [{{ stats['ads_percentage_today']['graph'] }}] {{ stats['ads_percentage_today']['float']}}%
+ Latest:   {{ stats['latest-blocked']['value'] }} 
+ Top Ad:   {% if top_ads|length == 0 %}N/A{% else %}{{ top_ads[0]['url']['str'] }} (req: {{ ANSI['Fore']['Bright_Magenta'] }}{{ top_ads[0]['hits']['value'] }}{{ ANSI['Ctl']['Reset'] }}){% endif %}
+ Top Dmn:  {% if top_domains|length == 0 %}N/A{% else %}{{ top_domains[0]['url']['str'] }} (req: {{ ANSI['Fore']['Bright_Magenta'] }}{{ top_domains[0]['hits']['value'] }}{{ ANSI['Ctl']['Reset'] }}){% endif %}
+ Top Clnt: {% if top_clients | length > 0 %}{% if top_clients[0]['hostname']['value'] | length > 0 %}{{ top_clients[0]['hostname']['str']  }}{% else %}{{ top_clients[0]['IP']['str'] }}{% endif %} (req: {{ ANSI['Fore']['Bright_Magenta'] }}{{ top_clients[0]['requests']['value'] }}{{ ANSI['Ctl']['Reset'] }}){% endif %}
+NETWORK ====================================================
+ Hostname: {{ host['hostname']['value'] }}      Domain: {{ host['domainname']['value'] }}
+ IPv4: {{ setupvars['IPV4_ADDRESS']['value'] }} 
+ IPv6: {% if setupvars['IPV6_ADDRESS']['value'] == "" %}{{ ANSI['Fore']['Magenta'] }}Not Enabled{{ ANSI['Ctl']['Reset'] }}{% else %}{{ setupvars['IPV6_ADDRESS']['value'] }}{% endif %}
+SYSTEM =====================================================
+ Uptime: {{ uptime['long'] }}
+ CPU Temp: {{ status['temp']['C']['float'] }} CPU Load: {% for i in host['loadavg']['value'] %}{{ i }}{% if not loop.last %}, {% endif %}{% endfor %}
+ Memory: {{ host['system-memory']['percent']['graph'] }} {{ host['system-memory']['percent']['float'] }}%  CPU Load: [{{ host['cpuload']['graph'] }}] {{ host['cpuload']['float'] }}%

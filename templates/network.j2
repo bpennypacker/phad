@@ -1,0 +1,16 @@
+{{ ANSI['Ctl']['Clear_Screen'] }}{{ ANSI['Ctl']['Home'] }}{{ ANSI['Fore']['Bright_Cyan'] }}NETWORK CONFIGURATION{{ ANSI['Ctl']['Reset'] }}
+
+Hostname     : {{ ANSI['Fore']['Bright_Yellow'] }}{{ host['hostname']['value'] }}{{ ANSI['Ctl']['Reset'] }}
+Domain       : {{ ANSI['Fore']['Bright_Yellow'] }}{{ host['domainname']['value'] }}{{ ANSI['Ctl']['Reset'] }}
+
+{% if 'IPV4_ADDRESS' in setupvars %}IPv4 Address : {{ ANSI['Fore']['Bright_Yellow'] }}{{ setupvars['IPV4_ADDRESS']['value'] }}{{ ANSI['Ctl']['Reset'] }}{% endif %}
+{% if 'IPV6_ADDRESS' in setupvars %}IPv6 Address : {{ ANSI['Fore']['Bright_Yellow'] }}{{ setupvars['IPV6_ADDRESS']['value'] }}{{ ANSI['Ctl']['Reset'] }}{% endif %}
+
+{% if 'public_ip' in host %}Pub IPv4 Addr: {{ ANSI['Fore']['Bright_Yellow'] }}{{ host['public_ip'] }}{{ ANSI['Ctl']['Reset'] }}{% endif %}
+
+DNS Server(s): {{ ANSI['Fore']['Bright_Yellow'] }}{{ setupvars['PIHOLE_DNS_1']['value'] }}{% if 'PIHOLE_DNS_2' in setupvars %}, {{ setupvars['PIHOLE_DNS_2']['value'] }}{% endif %}{{ ANSI['Ctl']['Reset'] }}
+
+{{ ANSI['Fore']['Bright_Cyan'] }}QUERY TYPES{{ ANSI['Ctl']['Reset'] }}
+{%- for q in querytypes %}
+{{ q['type']['str'] }} {{ q['value']['value'] }}%
+{%- endfor %}
