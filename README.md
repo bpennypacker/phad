@@ -33,8 +33,9 @@ These instructions assume you already have a Raspberry Pi configured with Pi-hol
 ```
 if [ "$TERM" == "linux" ] ; then
     while :
+        do
         # Run phad in touchscreen mode (the default)
-   	    /home/pi/git/phad/phad
+        /home/pi/git/phad/phad
     
         # If you don't have a touchscreen or just want to cycle between screens every 10 seconds
         # then use this command instead:
