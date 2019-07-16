@@ -778,12 +778,14 @@ def load_config():
 
     templates = config.get('main', 'templates').split(',')
 
-    if config.has_option('main', 'input_device'):
-        input_device = config.get('main', 'input_device')
+    if not args.seconds:
+        if config.has_option('main', 'input_device'):
+            input_device = config.get('main', 'input_device')
+        else:
+            input_device = '/dev/input/event0'
+        dev = InputDevice(input_device)
     else:
-        input_device = '/dev/input/event0'
-
-    dev = InputDevice(input_device)
+        pass
 
 #############################################################################
 
