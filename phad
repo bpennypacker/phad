@@ -28,7 +28,6 @@ import signal
 import errno
 import shlex
 import struct
-from evdev import ecodes, InputDevice
 from select import select
 from socket import error as socket_error
 from subprocess import Popen, PIPE
@@ -45,6 +44,7 @@ templates = None
 dev = None
 pid_file = None
 template_path = './'
+evdevInstalled = False
 
 debug = False
 
@@ -466,8 +466,14 @@ def get_timed_data(cfg, data):
 
 #############################################################################
 def ip2long(ip):
-    packedIP = socket.inet_aton(ip)
-    return struct.unpack("!L", packedIP)[0]
+    try:
+        return struct.unpack('!I', socket.inet_pton(socket.AF_INET, ip))[0]
+    except socket.error:
+        try:
+            hi, lo = struct.unpack('!QQ', socket.inet_pton(socket.AF_INET6, ip))
+            return (hi << 64) | lo
+        except socket.error:
+            return 0
 
 #############################################################################
 # Commands from https://github.com/pi-hole/FTL
@@ -800,7 +806,7 @@ def load_config():
 
     templates = config.get('main', 'templates').split(',')
 
-    if config.has_option('main', 'input_device'):
+    if evdevInstalled == True and config.has_option('main', 'input_device'):
         input_device = config.get('main', 'input_device')
         if os.path.exists(input_device):
             dev = InputDevice(input_device)
@@ -855,6 +861,13 @@ def is_running(pid):
 #############################################################################
 
 if __name__ == '__main__':
+    try:
+        from evdev import ecodes, InputDevice
+        evdevInstalled = True
+    except:
+        Warning('Moudle evdev not found. Touch screen support is disabled.')
+        time.sleep(10)
+
     parser = argparse.ArgumentParser(description="Pi-Hole Alternate Display")
     parser.add_argument('-c', '--config',
                         help="Config file",
