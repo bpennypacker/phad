@@ -28,13 +28,12 @@ import signal
 import errno
 import shlex
 import struct
-from evdev import ecodes, InputDevice
 from select import select
 from socket import error as socket_error
 from subprocess import Popen, PIPE
 from threading import Timer
 
-VERSION = "0.1"
+VERSION = "0.2"
 
 current_template_id = 0
 main_timeout = 0
@@ -45,6 +44,7 @@ templates = None
 dev = None
 pid_file = None
 template_path = './'
+evdevInstalled = False
 
 debug = False
 
@@ -92,7 +92,7 @@ Ctl = {
   'Reversed': u'\u001b[7m',
   'Clear_Screen_End': u'\u001b[0J',   # Cursor to end of screen
   'Clear_Screen_Start': u'\u001b[1J', # Cursor to start of screen
-  'Clear_Screen': u'\u001b[2J', 
+  'Clear_Screen': u'\u001b[2J',
   'Clear_Line_End': u'\u001b[0K',     # Cursor to end of line
   'Clear_Line_Start': u'\u001b[1K',   # Cursor to start of line
   'Clear_Line': u'\u001b[2K',
@@ -102,6 +102,11 @@ Ctl = {
 
 EOM = "---EOM---" # All FTL responses end with this
 
+
+#############################################################################
+
+def Warning(msg):
+  print "{}Warning:{} {}".format(Fore['Bright_Red'], Ctl['Reset'], msg)
 
 #############################################################################
 
@@ -244,7 +249,7 @@ def get_uptime(cfg):
           uptime[i] = formatted[i]
 
   return uptime
-   
+
 #############################################################################
 
 def get_pihole_results(client, command, maxsplit=-1):
@@ -281,13 +286,24 @@ def get_pihole_results(client, command, maxsplit=-1):
 def get_public_ip(cfg):
     Debug('get_public_ip()')
 
-    if cfg.has_option('main', 'external_ip_url'):
-        url = cfg.get('main', 'external_ip_url')
-    else:
-        url = 'https://diagnostic.opendns.com/myip'
+    # originally external_ip_url was just a single url. Now it can be a list
+    # of urls to query. If the first url throws an error then try the next,
+    # and so on until we get a valid response
 
-    response = requests.get(url)
-    return response.text
+    if not cfg.has_option('main', 'external_ip_url'):
+        return "unknown"
+
+    urllist = cfg.get('main', 'external_ip_url').split(',')
+
+    for url in urllist:
+        Debug('Querying {} for public IP'.format(url))
+        try:
+            response = requests.get(url)
+            return response.text
+        except:
+            pass
+
+    return "unknown"
 
 #############################################################################
 # Fetched timed data once every 24 hours
@@ -340,7 +356,7 @@ def get_timed_data(cfg, data):
                 git_sudo = True
 
             git_cmd = "{}git -C {} remote update".format( "sudo " if git_sudo else "", git_repo)
-                   
+
             results = run(git_cmd)
 
         pattern = re.compile('.* (version|hash) is (.*) \(Latest: (.*)\)')
@@ -450,8 +466,14 @@ def get_timed_data(cfg, data):
 
 #############################################################################
 def ip2long(ip):
-    packedIP = socket.inet_aton(ip)
-    return struct.unpack("!L", packedIP)[0]
+    try:
+        return struct.unpack('!I', socket.inet_pton(socket.AF_INET, ip))[0]
+    except socket.error:
+        try:
+            hi, lo = struct.unpack('!QQ', socket.inet_pton(socket.AF_INET6, ip))
+            return (hi << 64) | lo
+        except socket.error:
+            return 0
 
 #############################################################################
 # Commands from https://github.com/pi-hole/FTL
@@ -612,8 +634,14 @@ def query_pihole(cfg):
     for i in status:
         status[i] = format_var(cfg, 'status/' + i, status[i])
 
-    with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
-        raw_temp = int(f.readline())
+    systemp = '/sys/class/thermal/thermal_zone0/temp'
+    raw_temp = 0
+    if os.path.exists(systemp):
+        try:
+            with open(systemp, 'r') as f:
+                raw_temp = int(f.readline())
+        except:
+            pass
 
     temp = { 'raw' : raw_temp, 'F': float(raw_temp) * 9 / 5000 + 32, 'C': float(raw_temp) / 1000, 'K': float(raw_temp) / 1000 + 273.15 }
 
@@ -746,11 +774,11 @@ def fetch_data(cfg):
 #############################################################################
 
 def load_config():
-    global main_timeout 
+    global main_timeout
     global config
-    global config_file_name 
+    global config_file_name
     global templateEnv
-    global templates 
+    global templates
     global template_path
     global dev
 
@@ -778,14 +806,13 @@ def load_config():
 
     templates = config.get('main', 'templates').split(',')
 
-    if not args.seconds:
-        if config.has_option('main', 'input_device'):
-            input_device = config.get('main', 'input_device')
+    if evdevInstalled == True and config.has_option('main', 'input_device'):
+        input_device = config.get('main', 'input_device')
+        if os.path.exists(input_device):
+            dev = InputDevice(input_device)
         else:
-            input_device = '/dev/input/event0'
-        dev = InputDevice(input_device)
-    else:
-        pass
+            Warning("input_device '{}{}{}' not found. Will not respond to screen touches. To suppress this warning comment out input_device in phad.conf.".format(Fore['Cyan'], input_device, Ctl['Reset']))
+            time.sleep(10)
 
 #############################################################################
 
@@ -834,6 +861,13 @@ def is_running(pid):
 #############################################################################
 
 if __name__ == '__main__':
+    try:
+        from evdev import ecodes, InputDevice
+        evdevInstalled = True
+    except:
+        Warning('Moudle evdev not found. Touch screen support is disabled.')
+        time.sleep(10)
+
     parser = argparse.ArgumentParser(description="Pi-Hole Alternate Display")
     parser.add_argument('-c', '--config',
                         help="Config file",
@@ -885,7 +919,7 @@ if __name__ == '__main__':
 
     if args.readconf == True:
         fname = config.get('main', 'pid_file')
-        try: 
+        try:
             with open(fname, "r") as f:
                 pid = f.readline()
             os.kill(int(pid), signal.SIGHUP)
@@ -922,7 +956,7 @@ if __name__ == '__main__':
     if config.has_option('main', 'pid_file'):
         pid_file = config.get('main', 'pid_file')
         pid_running = False
-        try: 
+        try:
             with open(pid_file, "r") as f:
                 pid = f.readline()
             pid_running = is_running(int(pid))
@@ -982,25 +1016,32 @@ if __name__ == '__main__':
         else:
             timeout = 30.0
 
-        try:
-            r1,w1,x1 = select([dev], [], [], timeout)
-        except Exception as e:
-            if e[0] == errno.EINTR:
-                # ALARM
-                current_template_id = 0
-                template = fetch_template(templates[current_template_id])
-                continue
-            else:
-                raise
-
-        if len(r1) != 0:
-            for event in dev.read():
-                if event.type == ecodes.EV_KEY and event.value == 1:
-                    current_template_id += 1
-                    if current_template_id >= len(templates):
-                        current_template_id = 0
-                        signal.alarm(0)
-                    elif main_timeout > 0:
-                        signal.alarm(main_timeout)
+        if dev:
+            try:
+                r1,w1,x1 = select([dev], [], [], timeout)
+            except Exception as e:
+                if e[0] == errno.EINTR:
+                    # ALARM
+                    current_template_id = 0
                     template = fetch_template(templates[current_template_id])
-                    break
+                    continue
+                else:
+                    raise
+
+            if len(r1) != 0:
+                for event in dev.read():
+                    if event.type == ecodes.EV_KEY and event.value == 1:
+                        current_template_id += 1
+                        if current_template_id >= len(templates):
+                            current_template_id = 0
+                            signal.alarm(0)
+                        elif main_timeout > 0:
+                            signal.alarm(main_timeout)
+                        template = fetch_template(templates[current_template_id])
+                        break
+        else: # No touch screen so just sleep and cycle through displays
+            time.sleep(timeout)
+            current_template_id += 1
+            if current_template_id >= len(templates):
+                current_template_id = 0
+            template = fetch_template(templates[current_template_id])
