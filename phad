@@ -46,6 +46,12 @@ pid_file = None
 template_path = './'
 evdevInstalled = False
 
+backlight_enabled = False
+backlight_file = None
+backlight_sudo = True
+backlight_off = '1'
+backlight_on = '0'
+
 debug = False
 
 # ANSI foreground, background, and control colors
@@ -112,7 +118,9 @@ def Warning(msg):
 
 def Debug(msg):
     if debug:
-        print msg
+        with open("debug.log", "a") as f:
+            f.write(msg)
+            f.write("\n")
 
 #############################################################################
 
@@ -822,6 +830,8 @@ def signal_handler(sig, stack):
         return
     elif sig == signal.SIGALRM:
         signal.alarm(0)
+        if backlight_enabled == True:
+            display_power(backlight_off)
         return
     elif sig == signal.SIGINT:
         if pid_file != None:
@@ -857,6 +867,33 @@ def is_running(pid):
     if os.path.isdir('/proc/{}'.format(pid)):
         return True
     return False
+
+#############################################################################
+# Return false if not toggling anything
+# Return true if state changed
+def display_power(val):
+    try:
+        with open(backlight_file, 'r') as f:
+            state = f.read().rstrip()
+    except:
+        return False
+
+    Debug("display_power() compare '{}' to '{}'".format(val, state))
+
+    if state == val:
+        return False
+
+    try:
+        if backlight_sudo == True:
+            cmd = "/usr/bin/sudo /bin/sh -c 'echo {} > {}'".format(val, backlight_file)
+            Popen(cmd, shell=True)
+        else:
+            with open(backlight_file, 'w') as f:
+                f.write(val)
+    except:
+        return False
+
+    return True
 
 #############################################################################
 
@@ -897,7 +934,7 @@ if __name__ == '__main__':
                         nargs = "+",
                         required=False)
     parser.add_argument('-d', '--debug',
-                        help="Debug",
+                        help="Write debugging information to debug.log",
                         required=False,
                         action="store_true")
 
@@ -975,6 +1012,28 @@ if __name__ == '__main__':
                 print "Unable to save PID to {}".format(pid_file)
                 print str(e)
 
+    if config.has_option('backlight', 'enabled'):
+        backlight_enabled = config.getboolean('backlight', 'enabled')
+        if backlight_enabled:
+            if config.has_option('backlight', 'file_location'):
+                backlight_file = config.get('backlight', 'file_location')
+
+            if config.has_option('backlight', 'use_sudo'):
+                backlight_sudo = config.getboolean('backlight', 'use_sudo')
+
+            if config.has_option('backlight', 'on_value'):
+                backlight_on = config.get('backlight', 'on_value')
+
+            if config.has_option('backlight', 'off_value'):
+                backlight_off = config.get('backlight', 'off_value')
+
+            if os.path.exists(backlight_file) == False or \
+               os.path.isfile(backlight_file) == False:
+                   Warning("LCD backlight file {} not found".format(backlight_file))
+                   Warning("Disabling backlight toggling of display.")
+                   time.sleep(10)
+                   backlight_enabled = False
+
     signal.signal(signal.SIGHUP, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
 
@@ -1000,6 +1059,8 @@ if __name__ == '__main__':
 
             time.sleep(seconds)
 
+    if backlight_enabled:
+        signal.alarm(main_timeout)
 
     while True:
         data = fetch_data(config)
@@ -1031,7 +1092,9 @@ if __name__ == '__main__':
             if len(r1) != 0:
                 for event in dev.read():
                     if event.type == ecodes.EV_KEY and event.value == 1:
-                        current_template_id += 1
+                        if backlight_enabled == False or display_power(backlight_on) == False:
+                            current_template_id += 1
+                            Debug("increment template to {}".format(current_template_id))
                         if current_template_id >= len(templates):
                             current_template_id = 0
                             signal.alarm(0)
