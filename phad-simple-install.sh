@@ -100,17 +100,17 @@ for i in ${PIHOLE_FILES} ; do
         printf "      This file does not exist, which means Pi-hole is not installed or has\\n"
         printf "      been installed in a custom location. This phad installer script assumes\\n"
         printf "      that Pi-hole was installed with default settings. Please see the phad\\n"
-        printf "      README file for instructions on installing PHAD manually.\\n"
+        printf "      README file for instructions on installing phad manually.\\n"
         exit 1
     fi
 done
 
 grep -q -i phad ${HOME}/.bashrc
 if [[ $? -eq 0 ]] ; then
-    printf "  %b %s\\n" "${CROSS}" "PHAD already configured to run"
-    printf "      Referenes to PHAD exist in ${HOME}/.bashrc.\\n"
+    printf "  %b %s\\n" "${CROSS}" "phad already configured to run"
+    printf "      Referenes to phad exist in ${HOME}/.bashrc.\\n"
     printf "      For this reason the installer refuses to run. Please see the\\n"
-    printf "      README file for instructions on installing PHAD manually.\\n"
+    printf "      README file for instructions on installing phad manually.\\n"
     exit 1
 fi
 
@@ -124,7 +124,7 @@ mkdir -p $PHAD_DIR
 
 if [ ! -d $PHAD_DIR ] ; then
     printf "  %b %s\\n" "${CROSS}" "Directory $PHAD_DIR not found"
-    printf "  %b %bPHAD installs into this directory but this installer was unable to create it. Aborting.%b\\n" "${INFO}" "${COL_LIGHT_RED}" "${COL_NC}"
+    printf "  %b %bphad installs into this directory but this installer was unable to create it. Aborting.%b\\n" "${INFO}" "${COL_LIGHT_RED}" "${COL_NC}"
     exit 1
 fi
 
@@ -132,8 +132,8 @@ cd $PHAD_DIR
 
 for i in ${PHAD_FILES} ; do
     if [ -f "$i" ] ; then
-        printf "  %b %s\\n" "${CROSS}" "PHAD file $i exists"
-        printf "  %b %bPHAD appears to already be installed in $PHAD_DIR. Aborting.%b\\n" "${INFO}" "${COL_LIGHT_RED}" "${COL_NC}"
+        printf "  %b %s\\n" "${CROSS}" "phad file $i exists"
+        printf "  %b %bphad appears to already be installed in $PHAD_DIR. Aborting.%b\\n" "${INFO}" "${COL_LIGHT_RED}" "${COL_NC}"
         exit 1
     fi
 done
@@ -183,11 +183,11 @@ RE='^[0-9]*$'
 T="x"
 
 if [ "$ts_dev" != "" ] ; then
-    if whiptail --title "Touchscreen interface" --yesno "A touch interfface was found at ${ts_dev}. Would you like PHAD to wake up when you touch the touchscreen?" ${r} ${c}; then
+    if whiptail --title "Touchscreen interface" --yesno "A touch interfface was found at ${ts_dev}. Would you like phad to wake up when you touch the touchscreen?" ${r} ${c}; then
         TOUCHSCREEN_DEV=${ts_dev}
         REQUIREMENTS="$REQUIREMENTS evdev>==1.0.0"
 	while ! [[ $T =~  $RE ]] ; do
-		T=$(whiptail --title "Touchscreen timeout" --inputbox "How many seconds after tapping on the display should PHAD blank the screen again?" ${r} ${c} 10 3>&1 1>&2 2>&3) 
+		T=$(whiptail --title "Touchscreen timeout" --inputbox "How many seconds after tapping on the display should phad blank the screen again?" ${r} ${c} 10 3>&1 1>&2 2>&3) 
 	done
 	[ "$T" != "" ] && MAIN_TIMEOUT=$T
     fi
@@ -196,7 +196,7 @@ fi
 if [[ "$TOUCHSCREEN_DEV" == "" ]] ; then
     T="x"
     while ! [[ $T =~  $RE ]] ; do
-        T=$(whiptail --title "Display cycle time" --inputbox "How many seconds shold PHAD wait between switching its display?" ${r} ${c} 20 3>&1 1>&2 2>&3)
+        T=$(whiptail --title "Display cycle time" --inputbox "How many seconds shold phad wait between switching its display?" ${r} ${c} 20 3>&1 1>&2 2>&3)
     done
     [ "$T" != "" ] && TEMPLATE_TIMEOUT="-s $T"
 fi
@@ -206,7 +206,7 @@ if [[ "TOUCHSCREEN_DEV" != "" && "$BACKLIGHT_FILE" == "" ]] ; then
     TEMPLATE_LIST+=("blank.j2" "A blank screen to simulate turning off the display" ON)
 fi
 
-TEMPLATE_LIST+=("main.j2" "The main PHAD summary screen" ON)
+TEMPLATE_LIST+=("main.j2" "The main phad summary screen" ON)
 TEMPLATE_LIST+=("top_ads.j2" "A list of the top ads blocked by your Pi-Hole" ON)
 TEMPLATE_LIST+=("top_clients.j2" "A list of the top clients using your Pi-Hole" ON)
 TEMPLATE_LIST+=("top_domains.j2" "A list of the top domains resolved by your Pi-Hole" ON)
@@ -216,7 +216,7 @@ L=${#TEMPLATE_LIST[@]}
 N=$(( L / 3 ))
 
 while [[ "$TL" == "" ]] ; do
-    TL=$(whiptail --title "Select pages PHAD should cycle between" --checklist "Select the templates that PHAD should cycle between" ${r} ${c} $N "${TEMPLATE_LIST[@]}" 3>&1 1>&2 2>&3)
+    TL=$(whiptail --title "Select pages phad should cycle between" --checklist "Select the templates that phad should cycle between" ${r} ${c} $N "${TEMPLATE_LIST[@]}" 3>&1 1>&2 2>&3)
 done
 TEMPLATES=$(echo $TL | sed -e 's/"//g' -e 's/ /,/'g)
 
@@ -229,16 +229,16 @@ printf "  %b %s\\n" "${TICK}" "Installed python dependencies"
 
 DL_URL=$(curl --silent "https://api.github.com/repos/bpennypacker/phad/releases/latest" | grep tarball_url | sed -e 's/^.*\: "//' -e 's/".*$//')
 printf "\\n"
-printf "  %b %bDownloading PHAD from %s%b\\n" "${INFO}" "${COL_LIGHT_RED}" "${DL_URL}" "${COL_NC}"
+printf "  %b %bDownloading phad from %s%b\\n" "${INFO}" "${COL_LIGHT_RED}" "${DL_URL}" "${COL_NC}"
 curl --silent -L $DL_URL | tar xz --strip-components=1
-printf "  %b %s\\n" "${TICK}" "Successfully downloaded PHAD"
+printf "  %b %s\\n" "${TICK}" "Successfully downloaded phad"
 
 for i in ${PHAD_FILES} ; do
     if [ ! -f "$i" ] ; then
-        printf "  %b %s\\n" "${CROSS}" "PHAD file $i not found"
-        printf "  %b %bPHAD appears to have failed to download properly.%b\\n" "${INFO}" "${COL_LIGHT_RED}" "${COL_NC}"
+        printf "  %b %s\\n" "${CROSS}" "phad file $i not found"
+        printf "  %b %bphad appears to have failed to download properly.%b\\n" "${INFO}" "${COL_LIGHT_RED}" "${COL_NC}"
         printf "      Check that $DL_URL is valid.\\n"
-        printf "      If that URL is valid then remove the current PHAD directory and.\\n"
+        printf "      If that URL is valid then remove the current phad directory and.\\n"
         printf "      try running this installer again.\\n"
         exit 1
     fi
@@ -297,22 +297,22 @@ EOM
 BASHRC=${HOME}/.bashrc
 IFS=$'\n'
 
-if whiptail --defaultno --title "Start PHAD automatically" --yesno "Would you like PHAD to start up automatically by adding it to the pi users .bashrc file?" ${r} ${c}; then
+if whiptail --defaultno --title "Start phad automatically" --yesno "Would you like phad to start up automatically by adding it to the pi users .bashrc file?" ${r} ${c}; then
     echo "" >> $BASHRC
-    echo "# Start PHAD" >> $BASHRC
+    echo "# Start phad" >> $BASHRC
     for i in ${BASH_TXT} ; do
         echo ${i} >> $BASHRC
     done
 
-    if whiptail --defaultno --title "Reboot?" --yesno "Your Raspberry Pi needs to be rebooted for PHAD to start. Reboot now?" ${r} ${c}; then
+    if whiptail --defaultno --title "Reboot?" --yesno "Your Raspberry Pi needs to be rebooted for phad to start. Reboot now?" ${r} ${c}; then
         sudo reboot
     else
-        printf "  %b %s\\n" "${TICK}" "PHAD installation complete"
+        printf "  %b %s\\n" "${TICK}" "phad installation complete"
     fi
 else
-    printf "  %b %s\\n" "${TICK}" "PHAD installation complete"
-    printf "  %b %bPHAD has not been configured to start automatically.%b\\n" "${INFO}" "${COL_LIGHT_RED}" "${COL_NC}"
-    printf "  %b %bTo start PHAD add something like this to your .bashrc file:%b\\n" "${INFO}" "${COL_LIGHT_RED}" "${COL_NC}"
+    printf "  %b %s\\n" "${TICK}" "phad installation complete"
+    printf "  %b %bphad has not been configured to start automatically.%b\\n" "${INFO}" "${COL_LIGHT_RED}" "${COL_NC}"
+    printf "  %b %bTo start phad add something like this to your .bashrc file:%b\\n" "${INFO}" "${COL_LIGHT_RED}" "${COL_NC}"
     printf "\\n"
     for i in ${BASH_TXT} ; do
         printf "    %s\\n" "$i"

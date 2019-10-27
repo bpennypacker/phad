@@ -5,7 +5,7 @@ Pi-hole Alternative Display
 
 While Pi-hole's chronometer is nice and other text/console displays are better, I still feel there was the potential for even more. Many of the displays that run chronometer, etc. are LCD touchscreens, yet the "touch" part isn't used. I also like having the ability to customize my Pi-hole display, so using templates for creating the display rather than hardcoding the display into a script also makes sense to me. phad combines support for touchscreens with python templates to let you display multiple screens of data by simply tapping on the screen. If you don't have a touchscreen then you can still have phad cycle between different screens at a rate you determine.
 
-phad's default screens include:
+phad's default screens are based on a 3x5" LCD screen and using the Terminus 8x14 console font. Examples of these screens include:
 
 ##### main page
 
@@ -110,7 +110,17 @@ Invoking `phad --help` will display a summary of command line options. Options a
    
 ### Tips and Tricks
 
-* To blank your touchscreen by default, edit the `templates` option in `phad.conf` and add the template `blank.j2` to the beginning of the list, then restart phad or tell it to re-read the configuration file via `./phad -r`. The `blank.j2` template simply clears the screen and does not print anything else.
+* To configure the font used by your Rasperry Pi's console run this command, and select the following settings. These are the settings that the default phad templates are designed to work with:
+```
+sudo dpkg-reconfigure console-setup
+
+Encodig: UTF-8
+Character set: Guess optimal character set
+Font for the connsole: Terminus
+Font Size: 8x14
+```
+
+* If your touchscreen does not support screen blanking or you are having trouble configuring it then an alternate approach is to use a blank template. It won't turn the touchscreen backlight off but it will still blank the screen. Edit the `templates` option in `phad.conf` and add the template `blank.j2` to the beginning of the list, then restart phad or tell it to re-read the configuration file via `./phad -r`. The `blank.j2` template simply clears the screen and does not print anything else.
 
 * To see a list of all the clients on your network that your pi-hole knows about and their hostnames if pi-hole knows about them as well, run `./pihole -t clients.j2`. The clients.j2 template simply dumps a list of all known client IP addresses and hostnames if known.
 
