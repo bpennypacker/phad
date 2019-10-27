@@ -276,7 +276,6 @@ else
   CMD="$CMD -e s/^enable_main_timeout=.*$/enable_main_timeout=False/"
 fi
 
-cp ${HOME}/phad.conf.test phad.conf
 mv phad.conf phad.conf.original
 cat phad.conf.original | sed $CMD > phad.conf
 
