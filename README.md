@@ -25,7 +25,19 @@ phad's default screens include:
 
 
 ### Quick Installation
-These instructions assume you already have a Raspberry Pi configured with Pi-hole and a touchscreen display. As there are many options for hardware and software, any initial setup and configuration is beyond the scope of these instructions. 
+These following instructions assume you already have a Raspberry Pi configured with Pi-hole and a touchscreen display. As there are many options for hardware and software, any initial setup and configuration is beyond the scope of these instructions.
+
+If you have installed Pi-hole using their One-Step Automated Install, or if you installed it via their basic-install.sh shell script then you can use phad-simple-install.sh to install phad. This can be as smple as using this command in a shell on your Raspberry Pi:
+```
+curl -sSL https://raw.githubusercontent.com/bpennypacker/phad/master/phad-simple-install.sh | bash
+```
+
+Or you can manually download the installer script and run it that way:
+```
+wget https://raw.githubusercontent.com/bpennypacker/phad/master/phad-simple-install.sh
+bash phad-simple-install.sh
+```
+Or, to manually install phad:
 
 1. Clone this repo using `git` or download and uncompress a release from the [releases page on GitHub](https://github.com/bpennypacker/phad/releases).
 2. Install any missing python dependencies by invoking `pip install -r requirements.txt`
