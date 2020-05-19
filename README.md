@@ -113,6 +113,13 @@ Invoking `phad --help` will display a summary of command line options. Options a
 
 ### Upgrading to v0.4
 
+To upgrade to v0.4 simply download the phad script and place it where phad is currently installed. Or you can run the following commands. This will update the phad script itself but will not make any other changes to your environment
+
+```
+    wget -c https://raw.githubusercontent.com/bpennypacker/phad/master/phad-simple-install.sh
+    bash phad-simple-install.sh --upgrade
+```
+
 The following entries have been removed from phad.conf:
 
 * enable_main_timeout

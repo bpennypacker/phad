@@ -117,7 +117,21 @@ for i in ${PIHOLE_FILES} ; do
     fi
 done
 
-exit
+if [[ "$1" == "--upgrade" ]] ; then
+    printf "  %b %bChecking Python and installing Python 3 dependencies%b\\n" "${INFO}" "${COL_LIGHT_RED}" "${COL_NC}"
+    EVDEV=$(/usr/bin/env python2 -m pip list | grep evdev)
+    if [[ "$EVDEV" != "" ]] ; then
+        REQUIREMENTS="$REQUIREMENTS evdev>==1.0.0"
+    fi
+    /usr/bin/env python3 -m pip install -q ${REQUIREMENTS}
+    DL_URL=$(curl --silent "https://api.github.com/repos/bpennypacker/phad/releases/latest" | grep tarball_url | sed -e 's/^.*\: "//' -e 's/".*$//')
+    printf "\\n"
+    DL_FILE=$(curl --silent -L $DL_URL | tar tz --strip-components=1 | grep -e '/phad$')
+    printf "  %b %bDownloading phad from %s%b\\n" "${INFO}" "${COL_LIGHT_RED}" "${DL_URL}" "${COL_NC}"
+    curl --silent -L $DL_URL | tar xz $DL_FILE --strip-components=1
+    printf "  %b %s\\n" "${TICK}" "Successfully downloaded the phad program. No changes have been made to phad.conf or ${HOME}/.bashrc"
+    exit 0
+fi
 
 grep -q -i phad ${HOME}/.bashrc
 if [[ $? -eq 0 ]] ; then
@@ -125,6 +139,12 @@ if [[ $? -eq 0 ]] ; then
     printf "      Referenes to phad exist in ${HOME}/.bashrc.\\n"
     printf "      For this reason the installer refuses to run. Please see the\\n"
     printf "      README file for instructions on installing phad manually.\\n"
+    printf "\\n"
+    printf "      If you would like to replace just the phad program without\\n"
+    printf "      making any changes to your existing configuration then run\\n"
+    printf "      the following commands:\\n\\n"
+    printf "      wget -c https://raw.githubusercontent.com/bpennypacker/phad/master/phad-simple-install.sh\\n"
+    printf "      bash phad-simple-install.sh --upgrade\\n"
     exit 1
 fi
 
