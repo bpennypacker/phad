@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 #    This program is free software: you can redistribute it and/or modify
@@ -13,11 +13,9 @@
 
 import os
 import sys
-import codecs
 import argparse
-import ConfigParser
+import configparser
 import socket
-import select
 import json
 import datetime
 import time
@@ -33,10 +31,11 @@ from socket import error as socket_error
 from subprocess import Popen, PIPE
 from threading import Timer
 
-VERSION = "0.3"
+VERSION = "0.4"
 
 current_template_id = 0
-main_timeout = 0
+display_timeout = 0
+refresh_rate = 0
 config = None
 config_file_name = None
 templateEnv = None
@@ -112,14 +111,14 @@ EOM = "---EOM---" # All FTL responses end with this
 #############################################################################
 
 def Warning(msg):
-  print "{}Warning:{} {}".format(Fore['Bright_Red'], Ctl['Reset'], msg)
+  print ("{}Warning:{} {}".format(Fore['Bright_Red'], Ctl['Reset'], msg))
 
 #############################################################################
 
 def Debug(msg):
     if debug:
         with open("debug.log", "a") as f:
-            f.write(msg)
+            f.write("{} {}".format(datetime.datetime.now().replace(microsecond=0).isoformat(), msg))
             f.write("\n")
 
 #############################################################################
@@ -136,7 +135,7 @@ def run(cmd, timeout_sec = 30):
     finally:
         timer.cancel()
 
-    return stdout.rstrip()
+    return stdout.decode().rstrip()
 
 #############################################################################
 
@@ -201,7 +200,7 @@ def format_var(cfg, name, value):
     if cfg.has_option(name, 'int'):
         c = cfg.get(name, 'int')
         c = c.replace("\"","")
-        v['int'] = c.format(int(value)).decode('utf-8')
+        v['int'] = c.format(int(value))
 
     if cfg.has_option(name, 'float'):
         c = cfg.get(name, 'float')
@@ -211,7 +210,7 @@ def format_var(cfg, name, value):
     if cfg.has_option(name, 'str'):
         c = cfg.get(name, 'str')
         c = c.replace("\"","")
-        v['str'] = c.format(str(value)).decode('utf-8')
+        v['str'] = c.format(str(value))
 
     if cfg.has_option(name, 'strings'):
         s = cfg.get(name, 'strings')
@@ -220,11 +219,11 @@ def format_var(cfg, name, value):
                 c = cfg.get(name, i)
                 c = c.replace("\"","")
                 if isinstance(value, list):
-                    v[i] = c.format(*value).decode('utf-8')
+                    v[i] = c.format(*value)
                 elif isinstance(value, dict):
-                    v[i] = c.format(**value).decode('utf-8')
+                    v[i] = c.format(**value)
                 else:
-                    v[i] = c.format(value).decode('utf-8')
+                    v[i] = c.format(value)
 
     return v
 
@@ -264,11 +263,12 @@ def get_pihole_results(client, command, maxsplit=-1):
     Debug('get_pihole_results({})'.format(command))
 
     while True:
-        client.send('>{}\n'.format(command))
+        cmd = '>{}\n'.format(command)
+        client.send(cmd.encode())
         results = ""
         try:
             while True:
-                r = client.recv(1024)
+                r = client.recv(1024).decode()
                 results += r
                 if EOM in r:
                     break
@@ -325,10 +325,10 @@ def get_timed_data(cfg, data):
         version_file = '/tmp/pihole.dat'
 
     d = {}
-    t = int(time.time()) / 60 / 60 / 24
+    t = int(time.time() / 60 / 60 / 24)
 
     if os.path.exists(version_file) and os.path.isfile(version_file):
-        Debug('  read {}'.format(version_file))
+        Debug('read {}'.format(version_file))
         with open(version_file, "r") as f:
             for line in f:
                 (key, val) = chomp(line).split("=")
@@ -345,7 +345,7 @@ def get_timed_data(cfg, data):
                 sp = response.headers['Location'].split('/')
                 if sp[-2] == 'tag':
                     phad_version = "{}".format(sp[-1])
-        except Exception, e:
+        except Exception as e:
             pass
 
         d['phad_latest'] = phad_version
@@ -501,7 +501,7 @@ def query_pihole(cfg):
         except socket.error as e:
             retries -= 1
             if retries <= 0:
-                print "Unable to communicate with pihole. Aborting."
+                print ("Unable to communicate with pihole. Aborting.")
                 sys.exit(1)
             time.sleep(1)
 
@@ -602,7 +602,7 @@ def query_pihole(cfg):
 
     data['client_names_sorted'] = d
 
-    client.send('>quit\n')
+    client.send('>quit\n'.encode())
     client.close()
 
     status = {}
@@ -781,8 +781,9 @@ def fetch_data(cfg):
 
 #############################################################################
 
-def load_config():
-    global main_timeout
+def load_config(enable_touchscreen):
+    global display_timeout
+    global refresh_rate
     global config
     global config_file_name
     global templateEnv
@@ -790,21 +791,23 @@ def load_config():
     global template_path
     global dev
 
-    Debug('load_config()')
+    Debug('load_config({})'.format(enable_touchscreen))
 
     try:
-        config.readfp(codecs.open(config_file_name, "r", "utf8"))
+        config.read(config_file_name)
     except Exception as e:
-        print e
+        print (e)
         sys.exit(1)
 
-    if config.has_option('main', 'enable_main_timeout') and config.getboolean('main', 'enable_main_timeout'):
-        if config.has_option('main', 'main_timeout'):
-            main_timeout = config.getint('main', 'main_timeout')
-        else:
-            main_timeout = 60
+    if config.has_option('main', 'display_timeout'):
+        display_timeout = config.getint('main', 'display_timeout')
     else:
-        main_timeout = 0
+        display_timeout = 30
+
+    if config.has_option('main', 'refresh_rate'):
+        refresh_rate = config.getint('main', 'refresh_rate')
+    else:
+        refresh_rate = 60
 
     if config.has_option('main', 'template_path'):
         template_path = config.get('main', 'template_path')
@@ -817,7 +820,13 @@ def load_config():
     if evdevInstalled == True and config.has_option('main', 'input_device'):
         input_device = config.get('main', 'input_device')
         if os.path.exists(input_device):
-            dev = InputDevice(input_device)
+            if enable_touchscreen == True:
+                try:
+                    dev = InputDevice(input_device)
+                except Exception as e:
+                    Warning("Unable to open input device '{}{}{}'. {}".format(Fore['Cyan'], input_device, Ctl['Reset'], str(e)))
+                    time.sleep(10)
+                    dev = None
         else:
             Warning("input_device '{}{}{}' not found. Will not respond to screen touches. To suppress this warning comment out input_device in phad.conf.".format(Fore['Cyan'], input_device, Ctl['Reset']))
             time.sleep(10)
@@ -826,9 +835,10 @@ def load_config():
 
 def signal_handler(sig, stack):
     if sig == signal.SIGHUP:
-        load_config()
+        load_config(True)
         return
     elif sig == signal.SIGALRM:
+        Debug("SIGALRM")
         signal.alarm(0)
         if backlight_enabled == True:
             display_power(backlight_off)
@@ -840,8 +850,14 @@ def signal_handler(sig, stack):
             except:
                 pass
 
+        if dev != None:
+            try:
+                dev.close()
+            except:
+                pass
+
         os.system('setterm -cursor on')
-        print ""
+        print ("")
         sys.exit(0)
 
 #############################################################################
@@ -899,7 +915,7 @@ def display_power(val):
 
 if __name__ == '__main__':
     try:
-        from evdev import ecodes, InputDevice
+        from evdev import ecodes, InputDevice, categorize
         evdevInstalled = True
     except:
         Warning('Moudle evdev not found. Touch screen support is disabled.')
@@ -949,10 +965,14 @@ if __name__ == '__main__':
     Debug("Script path: {}".format(script_path))
     os.chdir(script_path)
 
-    config = ConfigParser.ConfigParser()
+    config = configparser.RawConfigParser()
     config_file_name = args.config
 
-    load_config()
+    enable_touchscreen = True
+    if args.template != None or args.json == True or args.readconf == True:
+        enable_touchscreen = False
+
+    load_config(enable_touchscreen)
 
     if args.readconf == True:
         fname = config.get('main', 'pid_file')
@@ -960,33 +980,33 @@ if __name__ == '__main__':
             with open(fname, "r") as f:
                 pid = f.readline()
             os.kill(int(pid), signal.SIGHUP)
-            print "Sent SIGHUP to PID {}".format(pid)
+            print ("Sent SIGHUP to PID {}".format(pid))
         except Exception as e:
-            print str(e)
+            print (str(e))
         sys.exit(0)
 
     if args.json or args.items:
         data = fetch_data(config)
         if args.items:
             for i in sorted(data):
-                print i
+                print (i)
             sys.exit(0)
 
         if args.list is not None:
             for i in args.list:
-                print json.dumps({ i: data[i]}, indent=4, sort_keys=True)
-                print
+                print (json.dumps({ i: data[i]}, indent=4, sort_keys=True))
+                print ("")
         else:
             for i in sorted(data):
-                print json.dumps({ i: data[i]}, indent=4, sort_keys=True)
-                print
+                print (json.dumps({ i: data[i]}, indent=4, sort_keys=True))
+                print ("")
         sys.exit(0)
 
     if args.template:
         template = fetch_template(args.template)
         data = fetch_data(config)
         t = template.render(**data)
-        sys.stdout.write(t.encode('utf-8'))
+        sys.stdout.write(t)
         sys.stdout.flush()
         sys.exit(0)
 
@@ -1001,16 +1021,16 @@ if __name__ == '__main__':
             pass
 
         if pid_running:
-            # Don't overwrite the PID file (or delete it on shutdown) if it contains
-            # a PID of a running instance.
+            # Don't overwrite the PID file (or delete it on shutdown)
+            # if it contains a PID of a running instance.
             pid_file = None
         else:
             try:
                 with open(pid_file, "w") as f:
                     f.write("{}".format(os.getpid()))
             except Exception as e:
-                print "Unable to save PID to {}".format(pid_file)
-                print str(e)
+                print ("Unable to save PID to {}".format(pid_file))
+                print (str(e))
 
     if config.has_option('backlight', 'enabled'):
         backlight_enabled = config.getboolean('backlight', 'enabled')
@@ -1041,16 +1061,22 @@ if __name__ == '__main__':
 
     os.system('setterm -cursor off')
 
+    next_data_refresh = 0
+
     if args.seconds:
+        # Cycle periodically, so ignore touchscreen presses, etc.
         seconds = args.seconds
         current_template_id = 0
 
         while True:
-            template = fetch_template(templates[current_template_id])
+            secs = round(time.time())
+            if secs >= next_data_refresh:
+                data = fetch_data(config)
+                next_data_refresh = secs + refresh_rate
 
-            data = fetch_data(config)
+            template = fetch_template(templates[current_template_id])
             t = template.render(**data)
-            sys.stdout.write(t.encode('utf-8'))
+            sys.stdout.write(t)
             sys.stdout.flush()
 
             current_template_id += 1
@@ -1059,52 +1085,102 @@ if __name__ == '__main__':
 
             time.sleep(seconds)
 
-    if backlight_enabled:
-        signal.alarm(main_timeout)
+        # Should never actually get here - end of args.seconds loop
+        sys.exit(0)
 
-    while True:
-        data = fetch_data(config)
-        t = template.render(**data)
-        sys.stdout.write(t.encode('utf-8'))
-        sys.stdout.flush()
+    # If we get here then handle cases of both with & without touchscreen
+    # support. If a touch interface exists then check for touches to toggle
+    # the display, etc. If no touch interface then just cycle the display
+    # based on the display timeout.
 
-        if debug:
-            print ""
+    if dev:
+        Debug("Start touchscreen loop with backlight_enabled {} & display_timeout {}".format(backlight_enabled, display_timeout))
 
-        if config.has_option('main', 'refresh_rate'):
+        if backlight_enabled:
+            display_power(backlight_on)
             signal.signal(signal.SIGALRM, signal_handler)
-            timeout = config.getfloat('main', 'refresh_rate')
-        else:
-            timeout = 30.0
+            signal.alarm(display_timeout)
 
-        if dev:
-            try:
-                r1,w1,x1 = select([dev], [], [], timeout)
-            except Exception as e:
-                if e[0] == errno.EINTR:
-                    # ALARM
+        next_template_reset = 0
+
+        while True:
+            secs = round(time.time())
+
+            if backlight_enabled == False:
+                # Check on reverting to template 0 when there's no backlight to turn off
+                if secs >= next_template_reset:
                     current_template_id = 0
                     template = fetch_template(templates[current_template_id])
-                    continue
-                else:
-                    raise
+                    next_template_reset = secs + display_timeout
+
+            if secs >= next_data_refresh:
+                data = fetch_data(config)
+                t = template.render(**data)
+                sys.stdout.write(t)
+                sys.stdout.flush()
+                next_data_refresh = secs + refresh_rate
+
+            try:
+                r1,w1,x1 = select([dev], [], [], 1)
+            except Exception as e:
+                Debug("LOOP EXCEPTION: {}".format(str(e)))
+                r1 = []
 
             if len(r1) != 0:
                 for event in dev.read():
-                    if event.type == ecodes.EV_KEY and event.value == 1:
-                        if backlight_enabled == False or display_power(backlight_on) == False:
+                    # event.type, event.code, event.value
+                    if event.type == ecodes.EV_KEY and \
+                       event.code == ecodes.BTN_TOUCH and \
+                       event.value == 0: # "button" down
+
+                        Debug("EVENT: {}".format(categorize(event)))
+
+                        if backlight_enabled == False:
                             current_template_id += 1
-                            Debug("increment template to {}".format(current_template_id))
+                        else:
+                            if display_power(backlight_on):
+                                # display was turned on - revert to template 0
+                                current_template_id = 0
+                            else:
+                                current_template_id += 1
+
                         if current_template_id >= len(templates):
                             current_template_id = 0
-                            signal.alarm(0)
-                        elif main_timeout > 0:
-                            signal.alarm(main_timeout)
+
+                        Debug("shift template to {}".format(current_template_id))
+
                         template = fetch_template(templates[current_template_id])
+
+                        t = template.render(**data)
+                        sys.stdout.write(t)
+                        sys.stdout.flush()
+
+                        if backlight_enabled:
+                            signal.alarm(display_timeout)
+                        else:
+                            next_template_reset = round(time.time()) + display_timeout
                         break
-        else: # No touch screen so just sleep and cycle through displays
-            time.sleep(timeout)
+
+    else:
+        # No touch screen so enable the backlight if necessary
+        # then just sleep and cycle through displays
+
+        if backlight_enabled:
+            display_power(backlight_on)
+
+        while True:
+            secs = round(time.time())
+            if secs >= next_data_refresh:
+                data = fetch_data(config)
+                next_data_refresh = secs + refresh_rate
+
+            template = fetch_template(templates[current_template_id])
+            t = template.render(**data)
+            sys.stdout.write(t)
+            sys.stdout.flush()
+
             current_template_id += 1
             if current_template_id >= len(templates):
                 current_template_id = 0
-            template = fetch_template(templates[current_template_id])
+
+            time.sleep(display_timeout)

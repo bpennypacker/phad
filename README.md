@@ -25,6 +25,9 @@ phad's default screens are based on a 3x5" LCD screen and using the Terminus 8x1
 
 
 ### Quick Installation
+
+The current version of phad requires Python 3. Prior to v0.4 phad required Python 2. If you currently only have Python 2 available to you then you can download v0.3 manually from https://github.com/bpennypacker/phad/releases/tag/v0.3 and follow its installation instructions.
+
 These following instructions assume you already have a Raspberry Pi configured with Pi-hole and a touchscreen display. As there are many options for hardware and software, any initial setup and configuration is beyond the scope of these instructions.
 
 If you have installed Pi-hole using their One-Step Automated Install, or if you installed it via their basic-install.sh shell script then you can use phad-simple-install.sh to install phad. This can be as smple as using this command in a shell on your Raspberry Pi:
@@ -40,7 +43,7 @@ bash phad-simple-install.sh
 Or, to manually install phad:
 
 1. Clone this repo using `git` or download and uncompress a release from the [releases page on GitHub](https://github.com/bpennypacker/phad/releases).
-2. Install any missing python dependencies by invoking `pip install -r requirements.txt`
+2. Install any missing Python 3 dependencies by invoking `/usr/bin/env python3 -m pip install -r requirements.txt`
 3. Add the phad command to `~/.bashrc`:
 ```
 if [ "$TERM" == "linux" ] ; then
@@ -107,6 +110,19 @@ Invoking `phad --help` will display a summary of command line options. Options a
 * -d [--debug]
 
    Generate debugging output to stdout
+
+### Upgrading to v0.4
+
+The following entries have been removed from phad.conf:
+
+* enable_main_timeout
+* main_timeout
+
+They have been replaced by a single new entry, `display_timeout`, that defaults to 30 seconds.
+
+If a touchscreen has a backlight then display_timeout is the number of seconds after the screen is last touched before the display is turned off. If a touchscreen does not have a backlight then the display will instead revert to the first template listed in the `templates` section of `phad.conf`.
+
+If the `-s` command line option is used then `display_timeout` is ignored.
    
 ### Tips and Tricks
 

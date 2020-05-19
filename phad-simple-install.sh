@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-# Some of this code copied shamelessly from the pi-hole basic-install.sh script found
-# at https://install.pi-hole.net
+# Some of this code copied shamelessly from the pi-hole basic-install.sh script
+# found at https://install.pi-hole.net
 
 # Parse the output of udevadm, looking for the device associated with a touchscreen
 function get_touchscreen_dev()
@@ -91,7 +91,19 @@ templates/main.j2
 EOM
 )
 
-REQUIREMENTS="jinja2>==2.10 requests>==2.19"
+REQUIREMENTS="jinja2>==2.0 requests>==2.0"
+
+PYTHON3=$(/usr/bin/env python3  -c 'import sys; print(sys.version_info[0])')
+
+if [[ "$PYTHON3" != "3" ]] ; then
+	printf " %b %s\\n" "${CROSS}" "Python 3 not found\\n"
+	printf " %b %bPi-hole requires version 3 of Python to run.%b\\n" "${INFO}" "${COL_LIGHT_RED}" "${COL_NC}"
+	printf "     Please ensure Python 3 is installed and that the following command\\n"
+	printf "     launches the Python 3 interpreter:\\n"
+	printf "\\n     %b/usr/bin/env python3%b\\n" "${COL_LIGHT_GREEN}" "${COL_NC}"
+	printf "\\n"
+	exit 1
+fi
 
 for i in ${PIHOLE_FILES} ; do
     if [ ! -f $i ] ; then
@@ -104,6 +116,8 @@ for i in ${PIHOLE_FILES} ; do
         exit 1
     fi
 done
+
+exit
 
 grep -q -i phad ${HOME}/.bashrc
 if [[ $? -eq 0 ]] ; then
@@ -187,7 +201,7 @@ if [ "$ts_dev" != "" ] ; then
         TOUCHSCREEN_DEV=${ts_dev}
         REQUIREMENTS="$REQUIREMENTS evdev>==1.0.0"
 	while ! [[ $T =~  $RE ]] ; do
-		T=$(whiptail --title "Touchscreen timeout" --inputbox "How many seconds after tapping on the display should phad blank the screen again?" ${r} ${c} 10 3>&1 1>&2 2>&3) 
+		T=$(whiptail --title "Touchscreen timeout" --inputbox "How many seconds after tapping on the display should phad blank the screen again?" ${r} ${c} 10 3>&1 1>&2 2>&3)
 	done
 	[ "$T" != "" ] && MAIN_TIMEOUT=$T
     fi
@@ -212,7 +226,7 @@ TEMPLATE_LIST+=("top_clients.j2" "A list of the top clients using your Pi-Hole" 
 TEMPLATE_LIST+=("top_domains.j2" "A list of the top domains resolved by your Pi-Hole" ON)
 TEMPLATE_LIST+=("network.j2" "A summary of your Pi-Hole's network settings" ON)
 
-L=${#TEMPLATE_LIST[@]} 
+L=${#TEMPLATE_LIST[@]}
 N=$(( L / 3 ))
 
 while [[ "$TL" == "" ]] ; do
@@ -224,7 +238,7 @@ printf "  %b %bInstalling python dependencies:%b\\n" "${INFO}" "${COL_LIGHT_RED}
 for i in ${REQUIREMENTS} ; do
     printf "      - %s\\n" "${i}"
 done
-pip install -q ${REQUIREMENTS}
+/usr/bin/env python3 -m pip install -q ${REQUIREMENTS}
 printf "  %b %s\\n" "${TICK}" "Installed python dependencies"
 
 DL_URL=$(curl --silent "https://api.github.com/repos/bpennypacker/phad/releases/latest" | grep tarball_url | sed -e 's/^.*\: "//' -e 's/".*$//')
@@ -269,7 +283,7 @@ else
 fi
 
 CMD="$CMD -e s/^templates=.*$/templates=$TEMPLATES/"
- 
+
 if [[ "$MAIN_TIMEOUT" != "" ]] ; then
   CMD="$CMD -e s/^main_timeout=.*$/main_timeout=$MAIN_TIMEOUT/"
 else
