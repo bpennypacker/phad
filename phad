@@ -13,7 +13,6 @@
 
 import os
 import sys
-import codecs
 import argparse
 import configparser
 import socket
@@ -795,7 +794,7 @@ def load_config(enable_touchscreen):
     Debug('load_config({})'.format(enable_touchscreen))
 
     try:
-        config.read_file(codecs.open(config_file_name, "r", "utf8"))
+        config.read(config_file_name)
     except Exception as e:
         print (e)
         sys.exit(1)
