@@ -1,3 +1,3 @@
-jinja2>==2.10
-requests>==2.19
-evdev>==1.0.0
+jinja2>==2.0
+requests>==2.0
+evdev>==1.0
