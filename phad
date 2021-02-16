@@ -918,7 +918,7 @@ if __name__ == '__main__':
         from evdev import ecodes, InputDevice, categorize
         evdevInstalled = True
     except:
-        Warning('Moudle evdev not found. Touch screen support is disabled.')
+        Warning('Module evdev not found. Touch screen support is disabled.')
         time.sleep(10)
 
     parser = argparse.ArgumentParser(description="Pi-Hole Alternate Display")
