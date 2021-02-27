@@ -31,7 +31,7 @@ from socket import error as socket_error
 from subprocess import Popen, PIPE
 from threading import Timer
 
-VERSION = "0.4.1"
+VERSION = "0.4.2"
 
 current_template_id = 0
 display_timeout = 0
