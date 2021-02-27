@@ -97,7 +97,7 @@ PYTHON3=$(/usr/bin/env python3  -c 'import sys; print(sys.version_info[0])')
 
 if [[ "$PYTHON3" != "3" ]] ; then
 	printf " %b %s\\n" "${CROSS}" "Python 3 not found\\n"
-	printf " %b %bPi-hole requires version 3 of Python to run.%b\\n" "${INFO}" "${COL_LIGHT_RED}" "${COL_NC}"
+	printf " %b %bPhad requires version 3 of Python to run.%b\\n" "${INFO}" "${COL_LIGHT_RED}" "${COL_NC}"
 	printf "     Please ensure Python 3 is installed and that the following command\\n"
 	printf "     launches the Python 3 interpreter:\\n"
 	printf "\\n     %b/usr/bin/env python3%b\\n" "${COL_LIGHT_GREEN}" "${COL_NC}"
@@ -117,9 +117,22 @@ for i in ${PIHOLE_FILES} ; do
     fi
 done
 
+printf "  %b %bChecking Python 3 for pip%b\\n" "${INFO}" "${COL_LIGHT_RED}" "${COL_NC}"
+/usr/bin/env python3 -m pip --version > /dev/null 2>&1
+if [[ $? -ne 0 ]] ; then
+   printf "  %b %bInstalling python3-pip package%b\\n" "${INFO}" "${COL_LIGHT_RED}" "${COL_NC}"
+   sudo apt-get install python3-pip > /dev/null 2>&1
+   if [[ $? -ne 0 ]] ; then
+     printf " %b %s\\n" "${CROSS}" "Unable to install python3-pip\\n"
+     printf "  %b %bThe python3-pip package is required to allow python to install other packages.%b\\n" "${INFO}" "${COL_LIGHT_RED}" "${COL_NC}"
+     printf "      Please ensure the Python3 pip module is installed then re-run this installer.\\n"
+     exit 1
+   fi
+fi
+
 if [[ "$1" == "--upgrade" ]] ; then
-    printf "  %b %bChecking Python and installing Python 3 dependencies%b\\n" "${INFO}" "${COL_LIGHT_RED}" "${COL_NC}"
-    EVDEV=$(/usr/bin/env python2 -m pip list | grep evdev)
+    printf "  %b %bInstalling Python 3 dependencies%b\\n" "${INFO}" "${COL_LIGHT_RED}" "${COL_NC}"
+    EVDEV=$(/usr/bin/env python3 -m pip list | grep evdev)
     if [[ "$EVDEV" != "" ]] ; then
         REQUIREMENTS="$REQUIREMENTS evdev>==1.0.0"
     fi
@@ -166,7 +179,7 @@ cd $PHAD_DIR
 
 for i in ${PHAD_FILES} ; do
     if [ -f "$i" ] ; then
-        printf "  %b %s\\n" "${CROSS}" "phad file $i exists"
+        printf "  %b %s\\n" "${CROSS}" "file ${PHAD_DIR}/${i} exists"
         printf "  %b %bphad appears to already be installed in $PHAD_DIR. Aborting.%b\\n" "${INFO}" "${COL_LIGHT_RED}" "${COL_NC}"
         exit 1
     fi
@@ -230,13 +243,13 @@ fi
 if [[ "$TOUCHSCREEN_DEV" == "" ]] ; then
     T="x"
     while ! [[ $T =~  $RE ]] ; do
-        T=$(whiptail --title "Display cycle time" --inputbox "How many seconds shold phad wait between switching its display?" ${r} ${c} 20 3>&1 1>&2 2>&3)
+        T=$(whiptail --title "Display cycle time" --inputbox "No touchscreen interface was found, so touch support will be disabled. Instead, phad will be configured to cycle between displays automatically. How many seconds shold phad wait between switching its display?" ${r} ${c} 20 3>&1 1>&2 2>&3)
     done
     [ "$T" != "" ] && TEMPLATE_TIMEOUT="-s $T"
 fi
 
 declare -a TEMPLATE_LIST=()
-if [[ "TOUCHSCREEN_DEV" != "" && "$BACKLIGHT_FILE" == "" ]] ; then
+if [[ "$TOUCHSCREEN_DEV" != "" && "$BACKLIGHT_FILE" == "" ]] ; then
     TEMPLATE_LIST+=("blank.j2" "A blank screen to simulate turning off the display" ON)
 fi
 

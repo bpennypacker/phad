@@ -31,7 +31,7 @@ from socket import error as socket_error
 from subprocess import Popen, PIPE
 from threading import Timer
 
-VERSION = "0.4.1"
+VERSION = "0.4.2"
 
 current_template_id = 0
 display_timeout = 0
@@ -107,11 +107,13 @@ Ctl = {
 
 EOM = "---EOM---" # All FTL responses end with this
 
+args = None
 
 #############################################################################
 
 def Warning(msg):
-  print ("{}Warning:{} {}".format(Fore['Bright_Red'], Ctl['Reset'], msg))
+  if args.verbose:
+      print ("{}Warning:{} {}".format(Fore['Bright_Red'], Ctl['Reset'], msg))
 
 #############################################################################
 
@@ -683,11 +685,14 @@ def get_host_data(cfg):
 
     data['pid'] = os.getpid()
 
-    results = run('grep -c "model name" /proc/cpuinfo')
+    results = run('nproc')
     if len(results):
         data['numprocs'] = int(results)
     else:
-        data['numprocs'] = 0
+        msg = "Unexpected result from nproc [{}]. Assuming 1 processor.".format(results)
+        Warning(msg)
+        Devug(msg)
+        data['numprocs'] = 1
 
     data['cpuload'] = data['loadavg'][0] / data['numprocs'] * 100
 
@@ -914,13 +919,6 @@ def display_power(val):
 #############################################################################
 
 if __name__ == '__main__':
-    try:
-        from evdev import ecodes, InputDevice, categorize
-        evdevInstalled = True
-    except:
-        Warning('Module evdev not found. Touch screen support is disabled.')
-        time.sleep(10)
-
     parser = argparse.ArgumentParser(description="Pi-Hole Alternate Display")
     parser.add_argument('-c', '--config',
                         help="Config file",
@@ -953,8 +951,20 @@ if __name__ == '__main__':
                         help="Write debugging information to debug.log",
                         required=False,
                         action="store_true")
+    parser.add_argument('-v', '--verbose',
+                        help="Display warning messages on stdout",
+                        required=False,
+                        action="store_true")
 
     args = parser.parse_args()
+
+    try:
+        from evdev import ecodes, InputDevice, categorize
+        evdevInstalled = True
+    except:
+        Warning('Module evdev not found. Touch screen support is disabled.')
+        if args.verbose:
+            time.sleep(10)
 
     if args.debug:
         Ctl['Clear_Screen'] = '' # Disable clearing the screen & moving home so debug statement are seen
@@ -1051,7 +1061,8 @@ if __name__ == '__main__':
                os.path.isfile(backlight_file) == False:
                    Warning("LCD backlight file {} not found".format(backlight_file))
                    Warning("Disabling backlight toggling of display.")
-                   time.sleep(10)
+                   if args.verbose:
+                       time.sleep(10)
                    backlight_enabled = False
 
     signal.signal(signal.SIGHUP, signal_handler)
